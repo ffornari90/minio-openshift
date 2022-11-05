@@ -1,0 +1,3 @@
+certs/
+client.json
+minio-standalone-secret.yaml

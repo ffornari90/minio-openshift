@@ -1,0 +1,21 @@
+{
+  "redirect_uris": [
+    "https://minio-api-minio-ns.apps.cnsa.cr.cnaf.infn.it/minio/",
+    "https://minio-minio-ns.apps.cnsa.cr.cnaf.infn.it/oauth_callback",
+    "https://minio-0:9001/oauth_callback",
+    "https://minio-api-minio-ns.apps.cnsa.cr.cnaf.infn.it/minio/login/openid"
+  ],
+  "client_name": "minio-client",
+  "contacts": [
+    "federico.fornari@cnaf.infn.it"
+  ],
+  "token_endpoint_auth_method": "client_secret_basic",
+  "scope": "address phone openid email profile offline_access eduperson_scoped_affiliation eduperson_entitlement",
+  "grant_types": [
+    "refresh_token",
+    "authorization_code"
+  ],
+  "response_types": [
+    "code"
+  ]
+}

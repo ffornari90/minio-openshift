@@ -1,0 +1,172 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: minio-ns
+spec:
+  ports:
+  - name: minio
+    port: 9000
+  - name: minio-console
+    port: 9001
+  selector:
+    app: minio
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # This name uniquely identifies the Deployment
+  name: minio
+  namespace: minio-ns
+spec: 
+  serviceName: minio
+  selector:
+    matchLabels:
+      app: minio
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        # Label is used as selector in the service.
+        app: minio
+    spec:
+      hostAliases:
+      - ip: "131.154.162.124"
+        hostnames:
+        - "iam-indigo.cr.cnaf.infn.it"
+      # Refer to the PVC created earlier
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          # Name of the PVC created earlier
+          claimName: minio-pv-claim
+      - name: indigo-dc-policy
+        configMap:
+          name: indigo-dc-policy
+          defaultMode: 0644
+      - name: setup-policies
+        configMap:
+          name: setup-policies
+          defaultMode: 0755
+      - name: certs-volume
+        secret:
+          secretName: tls-ssl-minio
+          items:
+          - key: public.crt
+            path: public.crt
+          - key: private.key
+            path: private.key
+          - key: ca.crt
+            path: CAs/ca.crt
+      - name: trust
+        emptyDir: {}
+      initContainers:
+      - name: minio-ca-bundle
+        image: "alpine"
+        command: [sh, -c]
+        args:
+          - cd /tmp &&
+            wget 'http://repository.egi.eu/sw/production/cas/1/current/tgz/' &&
+            mkdir tgz && mkdir certificates &&
+            for tgz in $(cat index.html | awk -F'"' '{print $2}' | grep tar.gz);
+            do wget http://repository.egi.eu/sw/production/cas/1/current/tgz/$tgz -O tgz/$tgz;
+            done && for tgz in $(ls tgz/);
+            do tar xzf tgz/$tgz --strip-components=1 -C certificates/; done &&
+            for f in $(find certificates/ -type f -name '*.pem'); do cat $f >> certs/ca-bundle.crt;
+            cat $f >> certs/ca-bundle.trust.crt; done &&
+            wget 'https://crt.sh/?d=2475254782' -O certs/geant-ov-rsa-ca.crt &&
+            cat certs/geant-ov-rsa-ca.crt >> certs/ca-bundle.crt &&
+            cat certs/geant-ov-rsa-ca.crt >> certs/ca-bundle.trust.crt
+        volumeMounts:
+        - name: trust
+          mountPath: /tmp/certs
+      containers:
+      - name: minio-client
+        image: minio/mc
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c"]
+        args:
+          - /setup-policies.sh
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_USER
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_PASSWORD
+        - name: MINIO_URL
+          value: "https://minio.minio-ns.svc:9000"
+        - name: HOME
+          value: "/tmp"
+        volumeMounts:
+        - name: indigo-dc-policy
+          mountPath: /policy1/indigo-dc.json
+          subPath: indigo-dc.json
+        - name: setup-policies
+          mountPath: /setup-policies.sh
+          subPath: setup-policies.sh
+      - name: minio
+        # Pulls the default Minio image from Docker Hub
+        image: minio/minio
+        args:
+        - server
+        - /storage
+        env:
+        # Minio access key and secret key
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_USER
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_PASSWORD
+        - name: MINIO_SERVER_URL
+          value: "https://minio-0:9000"
+        - name: MINIO_ADDRESS
+          value: "minio-0:9000"
+        - name: MINIO_CONSOLE_ADDRESS
+          value: "minio-0:9001"
+        - name: HOME
+          value: "/tmp"
+        - name: MINIO_IDENTITY_OPENID_CLAIM_NAME
+          value: "groups"
+        - name: MINIO_IDENTITY_OPENID_SCOPES
+          value: "address phone openid email profile offline_access eduperson_scoped_affiliation eduperson_entitlement"
+        - name: MINIO_IDENTITY_OPENID_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_IDENTITY_OPENID_CLIENT_ID
+        - name: MINIO_IDENTITY_OPENID_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_IDENTITY_OPENID_CLIENT_SECRET
+        - name: MINIO_IDENTITY_OPENID_CONFIG_URL
+          value: "https://iam-indigo.cr.cnaf.infn.it/.well-known/openid-configuration"
+        ports:
+        - containerPort: 9000
+        readinessProbe:
+          tcpSocket:
+            port: 9000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        # Mount the volume into the pod
+        volumeMounts:
+        - name: storage # must match the volume name, above
+          mountPath: "/storage"
+        - name: certs-volume
+          mountPath: /tmp/.minio/certs
+        - mountPath: /etc/ssl/certs
+          name: trust
+          readOnly: true
