@@ -1,3 +1,5 @@
 certs/
 client.json
 minio-standalone-secret.yaml
+additional-scrape-configs.yaml
+prometheus-additional.yaml
