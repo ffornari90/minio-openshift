@@ -166,6 +166,10 @@ spec:
               key: MINIO_IDENTITY_OPENID_CLIENT_SECRET
         - name: MINIO_IDENTITY_OPENID_CONFIG_URL
           value: "https://iam-indigo.cr.cnaf.infn.it/.well-known/openid-configuration"
+        - name: MINIO_PROMETHEUS_URL
+          value: "https://minio-prometheus-minio-ns.apps.cnsa.cr.cnaf.infn.it"
+        - name: MINIO_PROMETHEUS_JOB_ID
+          value: "minio-job"
         ports:
         - containerPort: 9000
         readinessProbe:
